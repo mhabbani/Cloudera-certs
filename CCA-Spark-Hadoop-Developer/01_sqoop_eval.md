@@ -1,6 +1,6 @@
-# 01 Sqoop Import
+# 01 Sqoop Evaluations and Introduction
 
-This files covers the content of this [tutorial](https://www.youtube.com/watch?v=hY9nnU4PTFw&index=9&list=PLf0swTFhTI8rJvGpOp-LujOcpk-Rlz-yE)
+This file covers the content of this [tutorial](https://www.youtube.com/watch?v=hY9nnU4PTFw&index=9&list=PLf0swTFhTI8rJvGpOp-LujOcpk-Rlz-yE)
 
 ## Table of contents
 

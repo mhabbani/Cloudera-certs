@@ -8,7 +8,7 @@ based on the Cloudera Quickstart Virtual Machine provided by Cloudera.
 * Import all tables
   * Exercise
 * Import all tables into Hive
-
+* Import using `sqoop-import`
 
 ## Import all tables
 
@@ -173,7 +173,7 @@ Let's review that command step by step:
 * `--hive-overwrite`: this argument makes Sqoop overwrite existing data in Hive tables.
 * `--create-hive-table`: If set, then the job will fail if the target hive
   table exits. By default this property is false.
-* `--hive-database`: Specify destination database.
+* `--hive-database`: Specify destination database. If not used the `default` database is to be used.
 * `--compress`: Enable compression.
 * `--compression-codec`: Hadoop compression codec (default gzip).
 * `--outdir`: Output directory for generated code.
@@ -239,3 +239,4 @@ Now let's review the output of that command:
   We have the same number rows!
 		
 		
+## Import using `sqoop-import`

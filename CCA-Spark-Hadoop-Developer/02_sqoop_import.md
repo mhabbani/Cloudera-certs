@@ -185,6 +185,7 @@ Now let's review the output of that command:
 * Then we can check that the `sqoop_import` database has now the tables imported. We can verify this
   with Hive, or exploring the HDFS:
 	  * Connect to Hive, select sqoop_import as database, and show its tables:
+
 		```
 		use sqoop_import;
 		show tables;
@@ -196,7 +197,9 @@ Now let's review the output of that command:
 		orders
 		products
 		```
+
 	  * List all tables in the directory `/user/hive/warehouse/sqoop_import.db`:
+
 		```
 		hdfs dfs -ls /user/hive/warehouse/sqoop_import.db
   

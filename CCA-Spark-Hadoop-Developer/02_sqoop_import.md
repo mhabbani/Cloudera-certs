@@ -8,6 +8,8 @@ based on the Cloudera Quickstart Virtual Machine provided by Cloudera.
 * Import all tables
   * Exercise
 * Import all tables into Hive
+  * Understanding Hive directories and databases structure
+  * Import database and compress data
 * Import using `sqoop-import`
 
 ## Import all tables

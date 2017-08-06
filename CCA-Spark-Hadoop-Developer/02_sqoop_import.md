@@ -242,3 +242,137 @@ Now let's review the output of that command:
 		
 		
 ## Import using `sqoop-import`
+
+
+### Import your first table
+
+Let's start by importing a table into the HDFS:
+
+```
+sqoop import \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username=retail_dba \
+--password=cloudera \
+--table departments \
+--target-dir /user/cloudera/departments
+```
+
+In the command above we are telling Sqoop to import table `departments` from the database 
+`retail_db` into the target directory (`--target-dir`) `/user/cloudera/departments/`. 
+
+Since we are not specifying the number of mapper, Sqoop by default assigns 4 mappers to the processs, 
+that's why there are 4 files with data in the target directory: 
+
+```
+hdfs dfs -ls /user/cloudera/departments/ 
+
+Found 5 items
+-rw-r--r--   1 cloudera cloudera          0 2017-08-06 05:59 /user/cloudera/departments/_SUCCESS
+-rw-r--r--   1 cloudera cloudera         21 2017-08-06 05:59 /user/cloudera/departments/part-m-00000
+-rw-r--r--   1 cloudera cloudera         10 2017-08-06 05:59 /user/cloudera/departments/part-m-00001
+-rw-r--r--   1 cloudera cloudera          7 2017-08-06 05:59 /user/cloudera/departments/part-m-00002
+-rw-r--r--   1 cloudera cloudera         22 2017-08-06 05:59 /user/cloudera/departments/part-m-00003
+```
+
+### How is data distributed among files
+
+The way Sqoop distributes data among files is based on the primary key it finds in the original 
+table. It takes the minimum and the maximum of the primary key and splits that 
+range equally according to the number of mappers indicated by the user (4 by default). This 
+approach may lead to skewed distribution of data among files if there is a skewed distribution of 
+primary keys in the original table.
+
+To ilustrate this let's insert the following row in our table `departments`:
+
+```
+sqoop eval \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username=retail_dba \
+--password=cloudera \
+--query "INSERT INTO departments VALUES (8000, 'TESTING')"
+```
+
+Add import the table `departments` again into the HDFS, but this time using 2 mappers. The resulting
+folder would look like this:
+
+```
+hdfs dfs -ls /user/cloudera/departments/
+
+Found 3 items
+-rw-r--r--   1 cloudera cloudera          0 2017-08-06 06:56 /user/cloudera/departments/_SUCCESS
+-rw-r--r--   1 cloudera cloudera         60 2017-08-06 06:56 /user/cloudera/departments/part-m-00000
+-rw-r--r--   1 cloudera cloudera         13 2017-08-06 06:56 /user/cloudera/departments/part-m-00001
+```
+
+Note that the first file (`part-m-00000`) is almost 6 times heavier than the second file. That's
+because data has been distributed according to their primary keys: 
+
+* Sqoop takes the minium and maximum primary keys in the original table (1 and 8000 in our example).
+* It splits that range equally according to the number of mappers to be used (2 in our example):
+  * Which means a first range that goes from 2 to 4001, and a second range that goes from 4002 to 8000.
+* It distributes rows among files depending on in which range each row primary key falls. 
+
+The resulting files are the following:
+
+* File `part-m-00000`:
+  ```
+  2,Fitness
+  3,Footwear
+  4,Apparel
+  5,Golf
+  6,Outdoors
+  7,Fan Shop
+  ```
+  
+* File `part-m-00001`:
+  ```
+  8000,TESTING
+  ```
+
+### Using `--boundary-query` to limit import
+
+One of the Sqoop options to limit the rows to be imported to HDFS is the
+argument `--boundary-query`, which allows the user to especify the range of 
+primary keys to be imported. 
+
+Going back to our previous example, if we want to exclude the row `(8000, TESTING)` from
+the import process, use the `--boundary-query` as follows:
+
+```
+sqoop import \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username=retail_dba \
+--password=cloudera \
+--table departments \
+--target-dir /user/cloudera/departments
+--boundary-query "SELECT 2, 8"
+-m 2
+```
+
+As a result we have two files of similar size, with a similar number of rows, and without 
+the outlier case `(8000, TESTING)`:
+
+```
+hdfs dfs -ls /user/cloudera/departments/
+
+Found 3 items
+-rw-r--r--   1 cloudera cloudera          0 2017-08-06 07:39 /user/cloudera/departments/_SUCCESS
+-rw-r--r--   1 cloudera cloudera         31 2017-08-06 07:39 /user/cloudera/departments/part-m-00000
+-rw-r--r--   1 cloudera cloudera         29 2017-08-06 07:39 /user/cloudera/departments/part-m-00001
+```
+
+* File `part-m-00000`:
+
+	```
+	2,Fitness
+	3,Footwear
+	4,Apparel	
+	```
+	
+* File `part-m-00001`:
+
+	```
+	5,Golf
+	6,Outdoors
+	7,Fan Shop
+	```

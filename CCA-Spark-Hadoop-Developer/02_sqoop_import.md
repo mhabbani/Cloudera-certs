@@ -344,8 +344,8 @@ sqoop import \
 --username=retail_dba \
 --password=cloudera \
 --table departments \
---target-dir /user/cloudera/departments
---boundary-query "SELECT 2, 8"
+--target-dir /user/cloudera/departments \
+--boundary-query "SELECT 2, 8" \
 -m 2
 ```
 
@@ -376,3 +376,94 @@ Found 3 items
 	6,Outdoors
 	7,Fan Shop
 	```
+
+### What if there is no primary key?
+
+So far we've been importing tables with a primary key that Sqoop has used to split the data
+among the mappers and files. But what happens when we are to import a table that has no primary key?
+Well here we have two options:
+
+* To set the number of mappers to 1 (`-m 1`), so there is no need to split the table.
+* To use the argument `--split-by` which allows the user to specify which column is to be used
+  by Sqoop to split the data among mappers and files.
+
+
+### Using `--columns` to specify columns to be imported
+
+Sqoop provides the argument `--columns` allowing the user
+to specify the columns to be imported to the HDFS:
+
+
+```
+sqoop import \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username=retail_dba \
+--password=cloudera \
+--table departments \
+--target-dir /user/cloudera/departments \
+--boundary-query "SELECT 2, 8" \
+--columns department_name \ 
+-m 2 
+```
+
+The resulting files would look like this:
+
+```
+Fitness
+Footwear
+Apparel
+```
+
+### Using `--where` to limit rows to be imported
+
+This argument allows user limit the rows to be imported to the HDFS imposing conditions on 
+the rows to be imported:
+
+Let's import all rows of the table department with a `department_id` less than 9:
+
+```
+sqoop import \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username=retail_dba \
+--password=cloudera \
+--table departments \
+--target-dir /user/cloudera/departments \
+--where "department_id < 9" \
+-m 2
+```
+
+#### Note
+
+* The `WHERE` condition is to be imposed as well to the calculation of the range defining 
+  the primary keys to be imported. In this case such a range is calculated as follows:
+  ```
+  SELECT MIN(`department_id`), MAX(`department_id`) FROM `departments` WHERE ( department_id <9 )
+  ```
+
+### Using `--query` to more complex imports
+
+So far we have imported columns or tables combining the argments `--columns` and `--table`.
+The problem is that these arguments fall short soon if we want to perform more complicated
+imports, such as joined, grouped or filtered tables. To accomplish such complex imports
+Sqoop provides the argument `--query`.
+
+
+Let's import a join between the tables `orders` and `order_items`:
+
+```
+sqoop import \
+-m 4
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username=retail_dba \
+--password=cloudera \
+--target-dir /user/cloudera/order_join \
+--split-by order_id \
+--query "SELECT * FROM orders JOIN order_items ON orders.order_id=order_items.order_item_order_id WHERE \$CONDITIONS" 
+```
+
+#### Notes
+
+* `--query` argument is incompatible with arguments `--table` and `--columns`.
+* `--query` argument needs to be used along with the argument `--split-by`.
+* `--query` argument requires to have the `WHERE $CONDITIONS` clause in the query statement to be 
+  used by Sqoop to split data among mappers. The user may add more conditions if needed.

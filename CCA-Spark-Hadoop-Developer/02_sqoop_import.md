@@ -535,4 +535,85 @@ be imported.
 
 ## Incremental import
 
+### Using `--append` and `--where` arguments
 
+One option to perform incremental import is:
+
+1. To limit the imports from the original table to the new records using the argument `--where`.
+2. To append these new records to the exisint table in the HDFS using the argument `--append`.
+
+Let's see an example. Imagine we have in the HDFS the following records: 
+
+```
+2,Fitness
+3,Footwear
+4,Apparel
+5,Golf
+6,Outdoors
+```
+
+But we have the following new records in our original MySQL table that we would like to import to
+the HDFS:
+
+```
+--------------------------------------
+| department_id | department_name      | 
+--------------------------------------
+| 7           | Fan Shop             | 
+| 8000        | TESTING              | 
+--------------------------------------
+```
+
+One option would be to use the following command:
+
+```
+sqoop import \
+-m 1 \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username=retail_dba \
+--password=cloudera \
+--table departments \
+--target-dir /user/cloudera/departments \
+--append \
+--where "department_id >= 7"
+```
+
+* The `--append` argument prevents Sqoop to fail because the destination directory already exists.
+* The `--where` argument limit the rows to be imported to those not imported in the HDFS.
+
+### Using `--incremetal`
+
+A more sophisticated way of performing incremental imports is to use the following arguments:
+
+* `--check-column`: Specifies the column to be examined when determining which rows to import.
+* `--incremental`: Speicifies how Sqoop determines what rows are new:
+  * `append`: To be used when in the original table only inserts are performed 
+	(data is not updated)
+  * `lastmodified`: To be used when the original table suffers inserts and updates.
+* `--last-value`: Specifies the maximum value of the check column from the previous import. 
+
+A good strategy when performing this kind of imports is to have a column in our table where
+a timestamp is recorded every time any update or insert is performed on the table, and to 
+use this timestamp as check column. This will allow as to compare easily the imported table in the
+HDFS and the original table in MySQl.
+
+Let's repeat now the previous exercise but using this time the `--incremental` argument:
+
+```
+sqoop import \ 
+-m 1 \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username=retail_dba \
+--password=cloudera \
+--table departments \
+--target-dir /user/cloudera/departments \
+--check-column department_id \
+--incremental append \
+--last-value 6
+```
+
+* We have set the column `department_id` as check column using the argument `-check-column`.
+* Since we only want to append records, and not update them, we are using the option `append` 
+  for the argument `--incremental`.
+* We tell Sqoop using the argument `--last-value` 
+  that the last record imported had a `department_id` equals to 6.

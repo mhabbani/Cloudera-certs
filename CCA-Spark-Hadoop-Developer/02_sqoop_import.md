@@ -20,7 +20,9 @@ based on the Cloudera Quickstart Virtual Machine provided by Cloudera.
   * Using `--query` to more complex imports
 * Import tables in Hive using `sqoop-import`:
 * Incremental import
-
+  * Using `--append` and `--where` arguments
+  * Using `--incremetal`
+  
 ## Import all tables
 
 Import all table from a MySQL database to Hadoop.

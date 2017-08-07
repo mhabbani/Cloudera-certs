@@ -10,7 +10,16 @@ based on the Cloudera Quickstart Virtual Machine provided by Cloudera.
 * Import all tables into Hive
   * Understanding Hive directories and databases structure
   * Import database and compress data
-* Import using `sqoop-import`
+* Import tables using `sqoop-import` 
+  * Import your first table
+  * How is data distributed among files
+  * Using `--boundary-query` to limit import
+  * What if there is no primary key?
+  * Using `--columns` to specify columns to be imported
+  * Using `--where` to limit rows to be imported
+  * Using `--query` to more complex imports
+* Import tables in Hive using `sqoop-import`:
+* Incremental import
 
 ## Import all tables
 
@@ -467,3 +476,63 @@ sqoop import \
 * `--query` argument needs to be used along with the argument `--split-by`.
 * `--query` argument requires to have the `WHERE $CONDITIONS` clause in the query statement to be 
   used by Sqoop to split data among mappers. The user may add more conditions if needed.
+
+
+## Import tables in Hive using `sqoop-import`
+
+In this section I will cover how to import tables from MySQL to Hive:
+
+Let's assume we want to import the table `departments` from MySQL to Hive:
+
+```
+sqoop import \
+-m 4
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username=retail_dba \
+--password=cloudera \
+--table departments \
+--hive-import \ 
+--hive-table sqoop_import.departments \
+--create-hive-table
+```
+
+Notes on the previous command:
+
+* `--hive-import` Indicates Sqoop that this tabla is to be imported to Hive.
+* `--hive-table` Tells Sqoop the name of the table where data is to be imported. If the table belongs
+  to a database then specify the database as `database_name.table_name`.
+* `--create-hive-table` Teels Sqoop to create the table while importing. If the table already exists the
+  command will fail.
+  
+What if we have already created a table in Hive and want to add data to that table?
+
+```
+sqoop import \
+-m 4
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username=retail_dba \
+--password=cloudera \
+--table departments \
+--hive-import \ 
+--hive-overwrite \
+--hive-table sqoop_import.departments
+```
+
+Notes:
+
+* Argument `--create-hive-table` has been removed from the command. Sqoop expects the table 
+  `departments` to be already created in Hive.
+* `--hive-overwrite` Tells Sqoop to overwrite any data already in that table in Hive. If not set,
+  Sqoop will append imported data to existing data.
+
+#### Important Note
+
+While importing to Hive, Sqoop creates a staging temporary table in our user directory in the HDFS 
+(`/user/cloudera/` in our case), if a directory with the name of the table to be imported
+already exists in that directory Sqoop will fail. So check before importing to Hive, whether
+there are directories in the user directory in HDFS with the same name of the tables to
+be imported.
+
+## Incremental import
+
+

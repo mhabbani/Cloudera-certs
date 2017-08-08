@@ -95,7 +95,9 @@ sqoop export \
 ```
 
 * `--update-key` This is the column Sqoop will check to look for updates. If records comming from 
-  the HDFS already exists in the MySQL table, they will be used to update existing values in MySQL.
+  the HDFS already exists in the MySQL table, they will be used to update existing values in MySQL. 
+  **This column must be a primary key, otherwise values will not be updated**, but inserted
+  if `--update-mode` is set to `allowinsert`.
 * `--update-mode` Specify the mode to be used when exporting data from the HDFS. 
   Two options are allowed:
   * `allowinsert` Sqoop will update exising values and insert new values in the MySQL table.

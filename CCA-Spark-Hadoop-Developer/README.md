@@ -8,4 +8,5 @@
   * [Sqoop import](02_sqoop_import.md)
   * [Sqoop export](03_sqoop_export.md)
   * [Sqoop delimiters](04_sqoop_delimiters.md)
+  * [Sqoop file formats](05_sqoop_file_formats.md)
 * Flume (to come)

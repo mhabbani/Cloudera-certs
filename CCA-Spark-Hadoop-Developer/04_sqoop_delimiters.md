@@ -12,7 +12,8 @@ by Cloudera.
   * Line delimiters
   * MySQL delimiters
   * Dealing with NULL values
-
+* Sqoop export delimiters
+  
 ## Sqoop import delimiters
 
 ### Enclosing fields
@@ -88,7 +89,7 @@ sqoop import \
 --password=cloudera \
 --table departments \
 --target-dir /user/cloudera/sqoop_import/departments_enclosed \
---line-terminated-by \:
+--lines-terminated-by \:
 ```
 
 The resulting import lookg like this:
@@ -176,3 +177,91 @@ The resulting imported data looks like this:
 4,NULL-STRING
 NULL-VALUE,test_department
 ```
+
+## Sqoop export delimiters
+
+We will cover in this section some aspects to be taken into account
+when exporting from HDFS with Sqoop.
+
+### Exporting NULL values
+
+As we have seen in the previous section it's possible to specify the representation
+of NULL values in HDFS when importing using Sqoop. If we are now to export a dataset
+containing NULL values in HDFS we should tell Sqoop how to identify those NULL values
+in order to be correctly exported to MySQL.
+
+To do so Sqoop provides the following arguments:
+
+* `--input-null-string`: The string to be interpreted as NULL for string columns.
+* `--input-null-non-string`: The string to be interpreted as NULL for non-string columns.
+
+Now, let's assume we want to export back the table we imported to HDFS in the previous 
+section containing NULL values. On option would be the following:
+
+```
+sqoop export \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username=retail_dba \
+--password=cloudera \
+--table departments_test \
+--export-dir /user/cloudera/sqoop_import/departments_null \
+--input-null-string NULL-STRING \
+--input-null-non-string NULL-VALUE
+```
+
+Note how the HDFS datasest:
+
+```
+2,Fitness
+3,Footwear
+4,NULL-STRING
+NULL-VALUE,test_department
+```
+
+Has been correctly imported into MySQL, see the resulting table below:
+
+```
++---------------+-----------------+
+| department_id | department_name |
++---------------+-----------------+
+|             2 | Fitness         |
+|             3 | Footwear        |
+|             4 | NULL            |
+|          NULL | test_department |
++---------------+-----------------+
+```
+
+### Field and line delimiters
+
+In this final section I would like to comment how and when 
+we have to specify field, and line delimiters, and enclosing 
+characters.
+
+My opinion is that explicitly definition of delimiters is better
+than implicit. So ideally you should always specify the delimiters 
+used in HDFS. However, if those delimiters are Sqoop default
+delimiters (`,`, `\n`, and `'`), explicit definition while exporting may be avoided.
+
+When Sqoop default delimiters have not been used, for example
+when importing to Hive, you have to define those delimiters explicitly when
+exporting. To do so Sqoop provides the same arguments used 
+to define delimiters while importing (`--enclosed-by`, `--fields-terminated-by`, and 
+`--lines-terminated-by`).
+
+Let's assume we want to export a Hive table to MySQL:
+
+```
+sqoop export \ 
+-m 2 \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username=retail_dba \
+--password=cloudera \
+--table departments_export \
+--export-dir /user/hive/warehouse/sqoop_import.db/departments \
+--fields-terminated-by "\01" \
+--lines-terminated-by "\n"
+```
+
+Note that the fields delimiter is `\01` which is the default
+Hive delimiter, not explicitly defining those delimiters will 
+make Sqoop fail.

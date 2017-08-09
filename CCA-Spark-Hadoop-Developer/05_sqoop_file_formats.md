@@ -49,22 +49,75 @@ consists in importing data to HDFS and then create an external Hive table:
 1. We have already imported into HDFS the table departments from MySQL under sequence format.
 2. Let's create in Hive an external table using this imported data.
 
-**NOTE**: The following command does not work properly, it is to be corrected.
+**TODO**: Hive command to create external table from Sequence import
 
-```
-CREATE EXTERNAL TABLE departments_seq (department_id INT, department_name STRING) 
-ROW FORMAT SERDE 'com.cloudera.sqoop.contrib.FieldMappableSerDe'
-STORED AS INPUTFORMAT 'org.apache.hadoop.mapred.SequenceFileInputFormat'
-OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat'
-LOCATION '/user/cloudera/sqoop_import/departments_seq/';
-```
 
 ## Avro files
 
 Although I will not go into details describing Avro format, I will just
 describe them as quite similar to json files. More information 
-on Avro format may be found [here](https://avro.apache.org/docs/current/)
+on Avro format may be found [here](https://avro.apache.org/docs/current/).
 
+### Import table into HDFS
+
+Let's import now the MySQL table `departments` into HDFS as avro files using
+the argument `--as-avrodatafile`:
+
+```
+sqoop import \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username=retail_dba \
+--password=cloudera \
+--table departments \
+--target-dir /user/cloudera/sqoop_import/departments_avro \
+--as-avrodatafile
+```
+
+Once the import has terminated you should have a `.avsc` file 
+in the directory you executed the command. These files contain
+information about the structure of the imported data, they contain
+the schema of the imported table:
+
+```
+{
+  "type" : "record",
+  "name" : "sqoop_import_departments",
+  "doc" : "Sqoop import of departments",
+  "fields" : [ {
+	"name" : "department_id",
+	"type" : [ "int", "null" ],
+	"columnName" : "department_id",
+	"sqlType": : "4"
+  }, { 
+	"name" : "department_name",
+	"type" : [ "string", "null" ],
+	"columnName" : "department_name",
+	"sqlType" : "12"
+  } ],
+  "tableName" : "departments"
+}
+```
+
+### Import table into Hive
+
+Again, we cannot use the argument `--as-avrodatafile` along with
+the `--hive-import` so we need to create an external table in Hive from
+what we have already imported into HDFS. 
+
+To do so we first need to move the avro schema (the file with extension `.avsc`) to 
+HDFS and then create an external Hive table using the following command:
+
+```
+CREATE EXTERNAL TABLE departments 
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
+STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'
+LOCATION 'hdfs:///user/cloudera/sqoop_import/departments_avro'
+TBLPROPERTIES ('avro.schema.url'='hdfs://quickstart.cloudera/user/cloudera/sqoop_import_departments.avsc');
+```
 
 ## Comments on exporting
 
+Finally I'd like to comment that there is no need to specify the 
+delimiters when exporting squence and avro files. The delimiters have
+to be specified when dealing with plain text files.

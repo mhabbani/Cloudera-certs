@@ -11,4 +11,4 @@
   * [Sqoop file formats](05_sqoop_file_formats.md)
   * [Sqoop job and merge](06_sqoop_job_merge.md)
 * Flume
-  * [Flume Telnet](01_flume_telnet.md)
+  * [Flume](01_flume.md)

@@ -64,4 +64,16 @@ Hadoop commands. In that sense Hadoop provides four commands:
 ## Export data from HDFS
 
 We've seen previously how to export data from HDFS using Sqoop. We will cover in 
-this section how to move files and datasets from HDFS to our local machine.
+this section how to move files and datasets from HDFS to our local machine. To do this
+Hadoop provides the following commands:
+
+* `get`: Copy files from HDFS to destination. The source file is kept in HDFS. Let's assume
+  we want to copy the file `/user/cloudera/data/data.txt` into local:
+  ```
+  hdfs dfs -get /user/cloudera/data/data.txt ./data_from_hdfs.txt
+  ```
+* `copyToLocal`: Identical to `get` command.
+* `moveToLocal`: Although is not implemented yet it would copy files from HDFS into local and then
+  remove the source file.
+
+

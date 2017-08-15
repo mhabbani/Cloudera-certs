@@ -8,7 +8,11 @@ This file covers an introduction to PySpark based on [this playlist](https://www
 * Read and save from text file
 * Read and save from sequence file
 * Read and save from from json files and Hive
-  
+* Word Count program
+* Joining datasets
+  * Using RDDs
+  * Using Dataframes
+
 ## Connecting to a database
 
 In thi section we will cover how to connect Spark to a MySQL database. To do so
@@ -210,4 +214,183 @@ as JSON in HDFS we can proceed as follows:
 
 ```
 sqlContext.sql("SELECT * FROM json_d").toJSON().saveAsTextFile("/user/cloudera/pyspark/departments_saved/")
+```
+
+## Word Count program
+
+In this exercise we are going to implement a word count program using pyspark.
+To do so we will put the following file in HDFS:
+
+```
+Hello world how are you?
+I am fine and how about you.
+Let us write the word count program using pyspark - python on spark
+```
+
+We read the file in `pyspark`:
+
+```
+data = sc.textFile("/user/cloudera/spark_word_count.txt")
+```
+
+Each element in the RDD is a file line, to count the words we have to split
+each line into words:
+
+```
+dataFlatMap = data.flatMap(lambda x: x.split(" ")).map(lambda x: (x, 1)).reduceByKey(lambda a,b: a+b)
+
+for i in data.FlatMap.collect():
+	print(i)
+	
+(u'and', 1)
+(u'you?', 1)
+(u'about', 1)
+(u'word', 1)
+(u'python', 1)
+(u'am', 1)
+(u'-', 1)
+(u'count', 1)
+(u'us', 1)
+(u'write', 1)
+...
+```
+
+## Joining datasets
+
+In this section we will cover how to join datasets using Pypsark. 
+We have previously imported the tables `orders` and `order_items`
+into Hive using Sqoop.
+
+The goal of the exercise is to get the revenue and number of orders
+on a daily basis.
+
+The tables `orders` and `order_items` have the following structure:
+
+```
+hive> describe orders;
+OK
+order_id            int
+order_date          string
+order_customer_id   int
+order_status        string
+
+hive> describe order_items;
+OK
+order_item_id       int
+order_item_order_id int
+order_item_product_idint
+order_item_quantity tinyint
+order_item_subtotal double
+order_item_product_pricedouble
+```
+
+We will solve the problem using first RDDs and then dataframes, but first
+let's read the Hive tables using pyspark:
+
+```
+orders = sqlCtx.sql("SELECT * FROM orders")
+order_items = sqlCtx.sql("SELECT * FROM order_items")
+```
+
+#### Using RDDs
+
+Using spark 1.6 the variables previously loaded are dataframes, so in 
+order to work with RDDs we have to convert them:
+
+```
+orders_rdd = orders.rdd
+order_items_rdd = order_items.rdd
+
+# We now map orders and order_items as tuples
+orders_rdd_mapped = orders_rdd.map(lambda o: (o.order_id , ",".join([str(e) for e in o])))
+orders_items_rdd_mapped = order_items_rdd.map(lambda o: (o.order_item_order_id, ",".join([str(e) for e in o])))
+
+# We can finally join the two RDDS as follows:
+ordersJoined = orders_items_rdd.join(orders_items_rdd_mapped)
+```
+
+The resulting RDD would look something like this:
+
+```
+... 
+(32768, ('81958,32768,1073,1,199.99,199.99', '32768,2014-02-12 00:00:00.0,1900,PENDING_PAYMENT'))
+(32768, ('81959,32768,403,1,129.99,129.99', '32768,2014-02-12 00:00:00.0,1900,PENDING_PAYMENT'))
+(32768, ('81960,32768,957,1,299.98,299.98', '32768,2014-02-12 00:00:00.0,1900,PENDING_PAYMENT'))
+```
+
+We have now to extract from the joined RDD the subtotal and the date of the order:
+
+**ORDERS PER DAY**
+
+```
+# Firs extract unique orders per day
+orders_per_day = ordersJoined.map(lambda t: (t[1][1].split(",")[1] + "," + str(t[0]))).distinct()
+orders_per_day_parsed = orders_per_day.map(lambda t: (t.split(",")[0], 1))
+
+# We finally count the number of orders per day:
+total_orders_per_day = orders_per_day_parsed.reduceByKey(lambda a,b: a+b)
+
+```
+
+**REVENUE PER DAY**
+
+```
+# To calculate the revenue we can use reduceByKey
+rev_per_day = ordersJoined.map(lambda t: (t[1][1].split(",")[1], float(t[1][0].split(",")[4])))
+rev_per_day_tot = rev_per_day.reduceByKey(lambda tot1, tot2: tot1 + tot2)
+```
+
+**JOINING REVENUE AND NUMBER OF ORDERS**
+
+We can finally join revenue and number of orders by day:
+
+```
+final_join = rev_per_day_tot.join(total_orders_per_day)
+```
+
+#### Using Dataframes
+
+```
+# We first load the dataframes from Hive
+orders = sqlCtx.sql("SELECT * FROM orders")
+order_items = sqlCtx.sql("SELECT * FROM order_items")
+
+# We now join the dataframes
+orders_joined = order_items.join(orders, orders.order_id==order_items.order_item_order_id)
+```
+
+**ORDERS PER DAY**
+
+We now calculate based on the joined dataframe the number of orders per day:
+
+```
+orders_per_day = (orders_joined
+	.select(orders_joined.order_id, orders_joined.order_date)
+	.distinct()
+	.groupBy("order_date")
+	.count()
+	.withColumnRenamed("count", "orders")
+	)
+```
+
+**REVENUE PER DAY**
+
+We now calculate revenue per day based on joined dataframes:
+
+```
+rev_per_day = (orders_joined
+	.select(orders_joined.order_date, orders_joined.order_item_subtotal)
+	.groupBy("order_date")
+	.sum()
+	.withColumnRenamed("sum(order_item_subtotal)", "revenue")
+	.withColumnRenamed("order_date", "rev_date")
+		)
+```
+
+**JOINING REVENUE AND NUMBER OF ORDERS**
+
+Finally, we join both datafarmes by the order date:
+
+```
+final_df = rev_per_day.join(orders_per_day, rev_per_day.rev_date==orders_per_day.order_date)
 ```

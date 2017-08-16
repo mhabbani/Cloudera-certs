@@ -12,7 +12,8 @@ This file covers an introduction to PySpark based on [this playlist](https://www
 * Joining datasets
   * Using RDDs
   * Using Dataframes
-
+  * Using SQL
+  
 ## Connecting to a database
 
 In thi section we will cover how to connect Spark to a MySQL database. To do so
@@ -393,4 +394,64 @@ Finally, we join both datafarmes by the order date:
 
 ```
 final_df = rev_per_day.join(orders_per_day, rev_per_day.rev_date==orders_per_day.order_date)
+```
+
+#### Using SQL
+
+In this section we will see how to perform the previous joins using
+Spark SQL.
+
+**USING Hive Context**
+
+A first approach would be something like this:
+
+```
+sqlCtx = HiveContext(sc)
+joinDF = sqlCtx.sql(
+"SELECT o.order_date, sum(oi.order_item_subtotal) as rev, count(distinct o.order_id) FROM orders o JOIN order_items oi on o.order_id=oi.order_item_order_id GROUP BY o.order_date ORDER BY o.order_date"
+)
+```
+
+**USING SQL Context**
+
+This approach is a little bit more complicated since we have to
+register temporary tables. Assuming we have imported the tables `orders`
+and `order_items` into the HDFS location `/user/cloudera/sqoop_import/`.
+
+We can load them in spark as follows:
+
+```
+from pyspark.sql import SQLContext, Row
+sqlContext = SQLContext(sc)
+
+# Load RDD from HDFS
+ordersRDD = sc.textFile("/user/cloudera/sqoop_import/orders")
+# Break fields
+ordersMap = ordersRDD.map(lambda o: o.split(","))
+# Convert each row of the RDD into an object Row
+orders = ordersMap.map(lambda o: Row(order_id= int(o[0]), order_date=o[1], order_customer_id=int(o[2]), order_status=o[3]))
+
+# Finally we register the table as a temporary table
+orders_df = sqlContext.createDataFrame(orders)
+orders_df.registerTempTable("orders_df")
+```
+
+We will do the same with the table `order_items` so we will end up
+having a temporary table called `order_items_df`:
+
+```
+order_itemsRDD = sc.textFile("/user/cloudera/sqoop_import/order_items")
+order_itemsMap = order_itemsRDD.map(lambda oi: oi.split(","))
+order_items = order_itemsMap.map(lambda oi: Row(order_item_id=int(oi[0]), order_item_order_id=int(oi[1]), order_item_product_id=int(oi[2]), order_item_quantity=int(oi[3]), order_item_subtotal=float(oi[4]), order_item_product_price=float(oi[5])))
+order_items_df = sqlContext.createDataFrame(order_items)
+order_items_df.registerTempTable("order_items_df")
+```
+
+Finally we can run the same query we did with the Hive context but using the 
+temporary tables:
+
+```
+joinDF_sql = sqlContext.sql(
+"SELECT o.order_date, sum(oi.order_item_subtotal) as rev, count(distinct o.order_id) FROM orders_df o JOIN order_items_df oi on o.order_id=oi.order_item_order_id GROUP BY o.order_date ORDER BY o.order_date"
+)
 ```

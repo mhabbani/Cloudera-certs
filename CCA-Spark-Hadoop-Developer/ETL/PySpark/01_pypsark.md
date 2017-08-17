@@ -473,11 +473,104 @@ aggregation functions for Dataframes.
 In this section I will cover aggregation functions used 
 provided by Spark to work with RDDs. 
 
-Let's assume we want to count the number of distinct orders
-and the total revenue.
+Let's assume we want to count the number of distinct orders,
+the total revenue, and the number of orders by status.
 
 #### Counting orders
 
-#### Calculatinf revenue
+```
+# Let's load a RDD containing all orders
+order_i_RDD = sc.textFile("/user/cloudera/sqoop_import/order_items")
+
+# Get orders_id and count them 
+total_orders = order_i_RDD.map(lambda rec: int(rec.split(",")[1])).distinct().count()
+```
+
+#### Calculating revenue
+
+```
+# Based on the previous RDD we can now calculate revenue as follows:
+total_rev = order_i_RDD.map(lambda rec: float(rec.split(",")[4])).reduce(lambda acc, val: acc+val)
+
+# We can use reduceByKey or GroupByKey as follows:
+total_rev = order_i_RDD.map(lambda rec: (1, float(rec.split(",")[4]))).reduceByKey(lambda acc, val: acc+val)
+total_rev = order_i_RDD.map(lambda rec: (1, float(rec.split(",")[4]))).groupByKey().map(lambda t: (t[0], sum(t[1])))
+
+# Note have used the same key in the mapping so everything reduce to one value when summing.
+```
+
+#### Counting orders by status
+
+```
+# READ orders RDD
+orders_RDD = sc.textFile("/use/cloudera/sqoop_import/order_items")
+
+# Parse lines
+orders_map = orders_RDD.map(lambda rec: (rec.split(",")[3], 1))
+
+# Using reduce By Key
+orders_by_status = orders_map.reduceByKey(lambda acc, val: acc+val)
+
+# Using group By Key
+orders_by_status = orders_map.groupByKey().map(lambda t: (t[0], sum(t[1])))
+
+# Using countByKey
+orders_by_status = orders_map.countByKey()
+```
 
 ### Using Dataframes
+
+In this section we will cover the same exercises but using Spark Dataframes instead of
+RDDs:
+
+#### Counting orders
+
+```
+order_items_df = sqlCtx.sql("SELECT * FROM order_items")
+
+total_orders = order_items_df.select(order_items_df.order_item_order_id).distinct().count()
+```
+
+#### Calculating revenue
+```
+# Based on the previous RDD we can now calculate revenue as follows:
+total_rev = order_items_df.agg({'order_item_subtotal': 'sum'})
+
+# Another option is to import Pyspark SQL functions
+from pyspark.sql import functions as F
+total_rev = order_items_df.agg(F.sum(order_items_df.order_item_subtotal).alias('Total Revenue'))
+
+# Show results:
+total_rev.show()
+
++--------------------+
+|       Total revenue|
++--------------------+
+|3.4322619930019915E7|
++--------------------+
+```
+#### Counting orders by status
+
+```
+orders_df = sqlCtx.sql("SELECT * FROM orders")
+
+orders_by_status = orders_df.groupBy(orders_df.order_status).agg(F.count(orders_df.order_status).alias("Order by status"))
+
+# Show results:
+orders_by_status.show()
+
++---------------+---------------+                                               
+|   order_status|Order by Status|
++---------------+---------------+
+|        PENDING|           7610|
+|        ON_HOLD|           3798|
+| PAYMENT_REVIEW|            729|
+|PENDING_PAYMENT|          15030|
+|     PROCESSING|           8275|
+|         CLOSED|           7556|
+|       COMPLETE|          22899|
+|       CANCELED|           1428|
+|SUSPECTED_FRAUD|           1558|
++---------------+---------------+
+```
+

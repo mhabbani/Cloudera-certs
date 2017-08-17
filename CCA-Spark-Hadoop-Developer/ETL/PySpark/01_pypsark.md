@@ -13,6 +13,9 @@ This file covers an introduction to PySpark based on [this playlist](https://www
   * Using RDDs
   * Using Dataframes
   * Using SQL
+* Aggregating datasets
+  * Using RDDS
+  * Using Dataframes
   
 ## Connecting to a database
 
@@ -455,3 +458,26 @@ joinDF_sql = sqlContext.sql(
 "SELECT o.order_date, sum(oi.order_item_subtotal) as rev, count(distinct o.order_id) FROM orders_df o JOIN order_items_df oi on o.order_id=oi.order_item_order_id GROUP BY o.order_date ORDER BY o.order_date"
 )
 ```
+
+## Aggregating datasets
+
+In this section I will cover briefly how to aggregate 
+dataset to make, counts, sums...
+
+I will split the section into two sub-sections: one
+covering aggregation function for RDDs and other for
+aggregation functions for Dataframes.
+
+### Using RDDS
+
+In this section I will cover aggregation functions used 
+provided by Spark to work with RDDs. 
+
+Let's assume we want to count the number of distinct orders
+and the total revenue.
+
+#### Counting orders
+
+#### Calculatinf revenue
+
+### Using Dataframes

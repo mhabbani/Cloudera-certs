@@ -16,6 +16,10 @@ This file covers an introduction to PySpark based on [this playlist](https://www
 * Aggregating datasets
   * Using RDDS
   * Using Dataframes
+* More complicated aggregations
+  * Using RDDs
+  * Using Dataframes
+
   
 ## Connecting to a database
 
@@ -572,5 +576,153 @@ orders_by_status.show()
 |       CANCELED|           1428|
 |SUSPECTED_FRAUD|           1558|
 +---------------+---------------+
+```
+
+## More complicated aggregations
+
+In this section we will continue calculating some aggregations
+but using more complicated functions like `aggregateByKey`
+or `combineByKey` when dealing with RDDs. The goal of this 
+section is to calculate:
+
+1. Revenue per day.
+2. Average revenue per day.
+
+### Using RDDs
+
+#### Revenue per day
+
+Let's assume we have loaded as RDDs the tables `orders` and `order_items`. 
+We will map order_items so the value `order_item_order_id` is set as key in order
+to join both tables using `order_id` as matching key.
+
+```
+# Load data from HDFS
+ordersRDD = sc.textFile('/user/cloudera/sqoop_import/orders').map(lambda rec: (rec.split(",")[0], rec))
+order_itemsRDD = sc.textFile('/user/cloudera/sqoop_import/order_items/').map(lambda rec: (rec.split(",")[1], rec))
+
+# Join both datasets.
+ordersJoined = order_itemsRDD.join(ordersRDD)
+
+# Map resulting dataset to get (date, subtotal)
+ordersJoinedMap = ordersJoined.map(lambda t: (t[1][1].split(",")[1], float(t[1][0].split(",")[4])))
+
+# Calculate revenue using Reduce By Key
+revenue_per_day = ordersJoinedMap.reduceByKey(lambda acc, val: acc+val)
+
+# Print results
+for i in revenue_per_day.sortByKey().collect():
+	print(i)
+	
+...
+(u'2014-07-19 00:00:00.0', 108439.13999999991)
+(u'2014-07-20 00:00:00.0', 141499.79999999993)
+(u'2014-07-21 00:00:00.0', 121102.76999999993)
+(u'2014-07-22 00:00:00.0', 73134.359999999957)
+(u'2014-07-23 00:00:00.0', 87990.379999999976)
+(u'2014-07-24 00:00:00.0', 97076.339999999938)
+```
+
+#### Average revenue per order and day
+
+In this part of the exercise we will try to calculate the average revenue per order and 
+day. We will start using the same joined RDDs:
+
+```
+ordersRDD = sc.textFile('/user/cloudera/sqoop_import/orders').map(lambda rec: (rec.split(",")[0], rec))
+order_itemsRDD = sc.textFile('/user/cloudera/sqoop_import/order_items/').map(lambda rec: (rec.split(",")[1], rec))
+
+# Join both datasets.
+ordersJoined = order_itemsRDD.join(ordersRDD)
+
+# In this case the key is to be a tuple (date, order_id) and the value will be the sub total
+ordersJoinedMap = ordersJoined.map(lambda t: ((t[1][1].split(",")[1], t[0]), float(t[1][0].split(",")[4])))
+
+# If we want to calculate the average revenue per day and order we cannot use
+# reduceByKey in this case. Let's try aggregateByKey and combineByKey
+revenue_interim = ordersJoinedMap.aggregateByKey(
+	(0, 1), 
+	lambda acc, val: (acc[0] + val, acc[1] + 1),
+	lambda acc, val: (acc[0] + val, acc[1] + 1)
+	)
+
+revenue_interim = ordersJoinedMap.combineByKey(
+	lambda x: (x, 1),
+	lambda acc, val: (acc[0] + val, acc[1] + 1),
+	lambda acc, val: (acc[0] + val, acc[1] + 1)
+	)
+
+# We can finally use map to calculate the average revenue per day and order
+revenue_day_order = revenue_interim.map(lambda r: (r[0], r[1][0]/r[1][1]))
+
+```
+
+### Using Dataframes
+
+In this section we will cover the same exercise but using
+Spark dataframes instead of RDDs
+
+
+#### Revenue per day
+
+We will load dataframes from Hive:
+
+```
+# Load dataframes from sql
+orders_df = sqlCtx.sql("SELECT * FROM orders")
+order_items_df = sqlCtx.sql("SELECT * FROM order_items")
+
+# Now calculating the revenue per day may be accomplished in
+# just one command.
+revenue_per_day = (order_items_df
+	.join(orders_df, orders_df.order_id==order_items_df.order_item_order_id)
+	.groupBy(orders_df.order_date)
+	.agg({'order_item_subtotal': 'sum'})
+	.orderBy('order_date')
+	)
+
+for i in revenue_per_day.collect():
+	print(i)
+	
+...
+
+Row(order_date=u'2014-07-19 00:00:00.0', sum(order_item_subtotal)=108439.14000000035)
+Row(order_date=u'2014-07-20 00:00:00.0', sum(order_item_subtotal)=141499.80000000034)
+Row(order_date=u'2014-07-21 00:00:00.0', sum(order_item_subtotal)=121102.77000000041)
+Row(order_date=u'2014-07-22 00:00:00.0', sum(order_item_subtotal)=73134.360000000102)
+Row(order_date=u'2014-07-23 00:00:00.0', sum(order_item_subtotal)=87990.380000000208)
+Row(order_date=u'2014-07-24 00:00:00.0', sum(order_item_subtotal)=97076.340000000157)
+```
+
+#### Revenue per day and order
+
+This case is not that different from the previous one, let's see:
+
+```
+# Import functions
+from pyspark.sql import functions as F
+
+# Load dataframes from sql
+orders_df = sqlCtx.sql("SELECT * FROM orders")
+order_items_df = sqlCtx.sql("SELECT * FROM order_items")
+
+# Now calculating the revenue per day may be accomplished in
+# just one command.
+revenue_per_day_order = (order_items_df
+	.join(orders_df, orders_df.order_id==order_items_df.order_item_order_id)
+	.groupBy([orders_df.order_date, orders_df.order_id])
+	.agg((F.sum('order_item_subtotal')/F.count('order_id')).alias('rev_day_order'))
+	.orderBy('order_date')
+	)
+
+for i in revenue_per_day_order.collect():
+	print(i)
+	
+...
+Row(order_date=u'2014-07-24 00:00:00.0', order_id=57693, rev_day_order=39.990000000000002)
+Row(order_date=u'2014-07-24 00:00:00.0', order_id=57694, rev_day_order=199.97999999999999)
+Row(order_date=u'2014-07-24 00:00:00.0', order_id=57695, rev_day_order=39.979999999999997)
+Row(order_date=u'2014-07-24 00:00:00.0', order_id=57696, rev_day_order=157.465)
+Row(order_date=u'2014-07-24 00:00:00.0', order_id=57697, rev_day_order=149.94)
 ```
 

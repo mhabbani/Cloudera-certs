@@ -19,7 +19,15 @@ This file covers an introduction to PySpark based on [this playlist](https://www
 * More complicated aggregations
   * Using RDDs
   * Using Dataframes
-
+* Getting max values
+  * Using RDDs
+  * Using Dataframes
+* Filtering data
+  * Using RDDs
+  * Using Dataframes
+* Ordering and ranking data
+  * Using RDDs
+  * Using Dataframes
   
 ## Connecting to a database
 
@@ -726,3 +734,187 @@ Row(order_date=u'2014-07-24 00:00:00.0', order_id=57696, rev_day_order=157.465)
 Row(order_date=u'2014-07-24 00:00:00.0', order_id=57697, rev_day_order=149.94)
 ```
 
+## Getting max values
+
+In this section we will cover the example in which we want
+to find the customer with the maximum revenue per day. We 
+will do this exercise using RDDs first, and then using Dataframes.
+
+
+### Using RDDs
+
+As in the previous exercises we will cover
+load the `orders` and `order_items` RDDs from HDFS:
+
+```
+ordersRDD = sc.textFile('/user/cloudera/sqoop_import/orders').map(lambda rec: (rec.split(",")[0], rec))
+order_itemsRDD = sc.textFile('/user/cloudera/sqoop_import/order_items/').map(lambda rec: (rec.split(",")[1], rec))
+
+# Join both datasets.
+ordersJoined = order_itemsRDD.join(ordersRDD)
+
+# Map the joined data and sum revenue per customer and day
+revenueDayCustomer = ordersJoined.map(lambda rec: ((rec[1][1].split(",")[1], rec[1][1].split(",")[2]), float(rec[1][0].split(",")[4]))).reduceByKey(lambda acc, val: acc+ val)
+
+# We have now revenue per day and custoemr
+for i in revenueDayCustomer.take(4):
+	print(i)
+... 
+((u'2014-02-22 00:00:00.0', u'7155'), 399.98000000000002)
+((u'2013-10-21 00:00:00.0', u'11284'), 1364.8900000000001)
+((u'2013-10-27 00:00:00.0', u'11875'), 699.96000000000004)
+((u'2014-05-12 00:00:00.0', u'10125'), 463.96000000000004)
+
+# Now we can map again the RDDs as follows:
+revenueDayCustomerMap = revenueDayCustomer.map(lambda rec: (rec[0][0], (rec[0][1], rec[1])))
+
+# Finally, we will claculate the customer with the maximum 
+# revenue using reduceByKey
+topCustomerPerDay = revenueDayCustomerMap.reduceByKey(lambda acc, val: (acc if acc[1] >= val[1] else val))
+
+for i in topCustomerPerDay.sortByKey().collect():
+	print(i)
+	
+...
+(u'2014-07-20 00:00:00.0', (u'4956', 1629.76))
+(u'2014-07-21 00:00:00.0', (u'5864', 1689.8600000000001))
+(u'2014-07-22 00:00:00.0', (u'7988', 1749.8900000000001))
+(u'2014-07-23 00:00:00.0', (u'5533', 2149.9899999999998))
+(u'2014-07-24 00:00:00.0', (u'3464', 1825.75))
+```
+
+### Using Dataframes
+
+In this subsection we will try to find the customers with maximum revenues
+per day using Spark Dataframes
+
+```
+# Import functions
+from pyspark.sql import functions as F
+
+# Load dataframes from sql
+orders_df = sqlCtx.sql("SELECT * FROM orders")
+order_items_df = sqlCtx.sql("SELECT * FROM order_items")
+
+max_rev_customer = (order_items_df
+	.join(orders_df, order_items_df.order_item_order_id==orders_df.order_id)
+	.groupBy(['order_date', 'order_customer_id'])
+	.agg(F.sum('order_item_subtotal').alias('Revenue_per_customer'))
+	.groupBy('order_date')
+	.agg(F.max('Revenue_per_customer').alias('Max_Revenue'))
+	.orderBy('order_date')
+	)
+
+for i in max_rev_customer.collect():
+	print(i)
+...
+Row(order_date=u'2014-07-20 00:00:00.0', Max_Revenue=1629.76)
+Row(order_date=u'2014-07-21 00:00:00.0', Max_Revenue=1689.8600000000001)
+Row(order_date=u'2014-07-22 00:00:00.0', Max_Revenue=1749.8900000000001)
+Row(order_date=u'2014-07-23 00:00:00.0', Max_Revenue=2149.9899999999998)
+Row(order_date=u'2014-07-24 00:00:00.0', Max_Revenue=1825.75)
+```
+
+## Filtering data
+
+In this section I will cover briefly how to filter a RDD or dataframe
+with Spark.
+
+### Using RDDs
+
+We will start working with the table `orders` already available in the HDFS
+
+```
+# Load data 
+orders = sc.textFile("/user/cloudera/sqoop_import/orders/")
+
+# Get complete orders
+for i in orders.filter(lambda line: line.split(",")[3] == "COMPLETE").take(5): print(i)
+
+# Get all pending orders
+for i in orders.filter(lambda line: "PENDING" in line.split(",")[3]).take(50): print(i)
+```
+
+Now let's check cancelled orders with amount greater than 1000 $
+
+```
+# Load data 
+orders = sc.textFile("/user/cloudera/sqoop_import/orders/")
+order_items = sc.textFile("/user/cloudera/sqoop_import/order_items/")
+
+# Filter CANCELED orders
+orders_parsed = (orders
+	.filter(lambda rec: rec.split(",")[3] in "CANCELED")
+	.map(lambda rec: (int(rec.split(",")[0]), rec))
+		)
+# Map order items
+order_items_parsed = (order_items
+	.map(lambda rec: (int(rec.split(",")[1]), float(rec.split(",")[4])))
+		)
+# Map order items aggregated
+order_items_agg = order_items_parsed.reduceByKey(lambda acc, val: acc + val)
+
+# Join the data
+joined = order_items_agg.join(orders_parsed)
+
+# Finally filter order with amount greater than 1000 $
+gt_orders = joined.filter(lambda rec: rec[1][0] > 1000)
+
+for i in gt_orders.collect():
+	print(i)
+
+```
+
+### Using Dataframes
+
+We will try now to accomplish the same task using this time
+Spark Dataframes.
+
+```
+# Load data 
+orders_df = sqlCtx.sql("SELECT * FROM orders")
+
+# Get complete orders
+complete_orders = orders_df.filter(orders_df.order_status=="COMPLETE")
+for i in complete_orders.take(100):
+	print(i)
+
+# Get all pending orders
+pending_orders = orders_df.filter(orders_df.order_status.startswith("PENDING"))
+for i in pending_orders:
+	print(i)
+	
+```
+
+Now let's check cancelled orders with amount greater than 1000 $
+
+```
+from pyspark.sql import functions as F
+
+# Load data 
+orders_df = sqlCtx.sql("SELECT * FROM orders")
+order_i_df = sqlCtx.sql("SELECT * FROM order_items")
+
+# Get Canceled orders
+orders_can = orders_df.filter(orders_df.order_status=="CANCELED")
+orders_i_agg = (order_i_df
+	.groupBy('order_item_order_id')
+	.agg(F.sum('order_item_subtotal').alias('revenue'))
+	)
+	
+joined = (orders_can
+	.join(orders_i_agg, orders_i_agg.order_item_order_id==orders_can.order_id)
+	.filter(orders_i_agg.revenue > 1000)
+	)
+	
+for i in joined.collect():
+	print(i)
+```
+
+## Ordering and ranking data
+
+In this section we will cover how to order and rank datasets using Spark
+RDDs and Dataframes.
+
+### Using RDDs
+### Using Dataframes

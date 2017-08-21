@@ -916,5 +916,51 @@ for i in joined.collect():
 In this section we will cover how to order and rank datasets using Spark
 RDDs and Dataframes.
 
+In this section we will work with the table `products` in order to get
+products sorted by price per category.
+
 ### Using RDDs
+
+Let's start approaching the problem using RDDs:
+
+```
+# Read products from HDFS
+products = sc.textFile('/user/cloudera/sqoop_import/products')
+
+# First we group by Category ID
+products_map = products.map(lambda rec: (rec.split(",")[1], rec))
+products_gr = products_map.groupByKey()
+
+# Now let's define a function taking that sort by price and take
+# a number of elements.
+
+import itertools
+
+def getTopN(rec, topN):
+	x = []
+	x = list(sorted(rec[1], key=lambda k: float(k.split(",")[4]) if k.split(",")[4]!='' else 0, reverse=True))
+	return (y for y in list(itertools.islice(x, 0, topN)))
+
+# We can now get a list of products ordered by price and category as follows
+pr = products_gr.flatMap(lambda x: getTopN(x,10))
+
+# The problem with this implementation is that we may get duplicated prices if
+# two products have the same price. 
+
+# Let's try to remove duplicates by improving our function getTopN
+def getTopDenseN(rec, topN):
+	x = []
+	topNPrices = []
+	prodPrices = []
+	prodPricesDesc = []
+	for i in rec[1]:
+		prodPrices.append(round(float(i.split(",")[4]), 2))
+	prodPricesDesc = list(sorted(set(prodPrices), reverse=True))
+	topNPrices = list(itertools.islice(prodPricesDesc, 0, topN))
+	for j in rec[1]:
+		if round(float(j.split(",")[4]),2) in topNPrices:
+			x.append(j)
+	return (y for y in x)
+```
+
 ### Using Dataframes

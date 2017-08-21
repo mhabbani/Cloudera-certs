@@ -957,10 +957,31 @@ def getTopDenseN(rec, topN):
 		prodPrices.append(round(float(i.split(",")[4]), 2))
 	prodPricesDesc = list(sorted(set(prodPrices), reverse=True))
 	topNPrices = list(itertools.islice(prodPricesDesc, 0, topN))
+	added_prices = []
 	for j in rec[1]:
-		if round(float(j.split(",")[4]),2) in topNPrices:
+		if round(float(j.split(",")[4]),2) in topNPrices and round(float(j.split(",")[4]),2) not in added_prices:
 			x.append(j)
+			added_prices.append(round(float(j.split(",")[4]),2))
 	return (y for y in x)
 ```
 
 ### Using Dataframes
+
+Let's try to solve now the same problem using Spark Dataframes instead
+
+```
+# Read table from Hive
+products_df = sqlCtx.sql("SELECT * FROM products")
+
+# Let's import windows functions
+from pyspark.sql import Window
+window = Window.partitionBy('product_category_id').orderBy(products_df.product_price.desc())
+from pyspark.sql.functions import rank
+
+df1 = (products_df
+	.select([rank().over(window).alias('dr')] + products_df.columns)
+	.groupBy(['product_category_id', 'dr'])
+	.agg(F.max('product_price').alias('price'))
+	.filter('dr<=2')
+	)
+```

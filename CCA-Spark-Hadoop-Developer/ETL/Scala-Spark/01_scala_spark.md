@@ -14,6 +14,7 @@ This file covers an introduction to Scala Spark based on [this playlist](https:/
 * Joining datasets
   * Using RDDs
   * Using Dataframes
+* Aggregating datasets
 
 
 ## Submitting tasks
@@ -289,4 +290,72 @@ rev_orders_per_day.show()
 |2013-08-29 00:00:...|   178| 99960.57000000017|
 |2013-10-27 00:00:...|   184|106982.81000000023|
 +--------------------+------+------------------+
+```
+
+## Aggregating datasets
+
+### Using RDDs
+
+Let's calculate a few aggregations using `order_items` table.
+
+```
+val orderItemsRDD = sc.textFile("/user/cloudera/sqoop_import/order_items")
+
+# Count number of rows
+orderItemsRDD.count()
+res0: Long = 172198
+
+# Sum all revenue
+orderItemsRDD.map(rec => rec.split(",")(4).toFloat).reduce(_+_)
+res1: Float = 3.4326032E7
+
+# Calculate number of unique orders
+orderItemsRDD.map(rec => rec.split(",")(1).toInt).distinct().count()
+res2: Long = 57431
+
+# Calculate the maximum priced order
+val order_rev = (orderItemsRDD
+	.map(rec => (rec.split(",")(1).toInt, rec.split(",")(4).toFloat))
+	.reduceByKey(_+_)
+	.reduce((acc, v) => if(acc._2 < v._2) v else acc)
+	)
+order_rev: (Int, Float) = (68703,3449.91)
+```
+
+### Using Dataframes
+
+Let's perform the same aggregations but using dataframes instead
+
+```
+val order_items = sqlContext.sql("SELECT * FROM order_items")
+
+# Calcualte number of rows
+order_items.count()
+res6: Long = 172198
+
+# Sum all revenue
+order_items.agg(Map("order_item_subtotal" -> "sum")).show()
++------------------------+
+|sum(order_item_subtotal)|
++------------------------+
+|    3.4322619930019915E7|
++------------------------+
+
+# Calculating number of unique orders
+order_items.select($"order_item_order_id").distinct().count()
+res12: Long = 57431
+
+# Calculate maximum priced order
+val order_rev = (order_items
+	.groupBy("order_item_order_id")
+	.agg(sum("order_item_subtotal").alias("revenue"))
+	.orderBy($"revenue".desc)
+	.limit(1)
+	)
+order_dev.show()
++-------------------+------------------+ 
+|order_item_order_id|           revenue|
++-------------------+------------------+
+|              68703|3449.9100000000003|
++-------------------+------------------+
 ```

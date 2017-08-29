@@ -15,7 +15,7 @@ This file covers an introduction to Scala Spark based on [this playlist](https:/
   * Using RDDs
   * Using Dataframes
 * Aggregating datasets
-
+* Aggregating data by key
 
 ## Submitting tasks
 
@@ -358,4 +358,148 @@ order_dev.show()
 +-------------------+------------------+
 |              68703|3449.9100000000003|
 +-------------------+------------------+
+```
+
+## Aggregating data by key
+
+In this section we will continue performing aggregations with Scala Spark:
+Let's count the number of orders by status:
+
+### CountByKey
+
+```
+# Read data from HDFS
+val orders = sc.textFile("/user/cloudera/sqoop_import/orders/")
+# Map and count by status
+val order_status = orders.map(rec => (rec.split(",")(3), 1)).countByKey()
+# Show results
+order_status.foreach(println)
+(PAYMENT_REVIEW,729)
+(CLOSED,7556)
+(SUSPECTED_FRAUD,1558)
+(PROCESSING,8275)
+...
+```
+
+### GroupByKey
+
+```
+# Read data from HDFS
+val orders = sc.textFile("/user/cloudera/sqoop_import/orders/")
+# Map and count by status
+val order_status = (orders
+	.map(rec => (rec.split(",")(3), 1))
+	.groupByKey()
+	.map(rec => (rec._1, rec._2.sum))
+	)
+
+order_status.collect().foreach(println)
+(CLOSED,7556)
+(CANCELED,1428)
+(PAYMENT_REVIEW,729)
+...
+```
+
+### ReduceByKey
+
+```
+# Read data from HDFS
+val orders = sc.textFile("/user/cloudera/sqoop_import/orders/")
+# Map and count by status
+val order_status = (orders
+	.map(rec => (rec.split(",")(3), 1))
+	.reduceByKey(_+_)
+	)
+(CLOSED,7556)                                                                   
+(CANCELED,1428)
+(PAYMENT_REVIEW,729)
+...
+```
+
+### CombineByKey
+
+```
+# Read data from HDFS
+val orders = sc.textFile("/user/cloudera/sqoop_import/orders/")
+# Map and count by status
+val order_status = (orders
+	.map(rec => (rec.split(",")(3), 0))
+	.combineByKey(value => 1,  (acc: Int,v: Int) => (acc + 1), (acc: Int,v: Int) => (acc + v))
+	)
+order_status.collect().foreach(println)
+(CLOSED,7556)                                                                   
+(CANCELED,1428)
+(PAYMENT_REVIEW,729)
+...
+```
+
+### aggregateByKey
+
+```
+# Read data from HDFS
+val orders = sc.textFile("/user/cloudera/sqoop_import/orders/")
+# Map and count by status
+val order_status = (orders
+	.map(rec => (rec.split(",")(3), 1))
+	.aggregateByKey(0)((acc, v) => acc + 1, (acc,v) => acc+v)
+	)
+
+order_status.collect.foreach(println)
+(CLOSED,7556)
+(CANCELED,1428)
+(PAYMENT_REVIEW,729)
+```
+
+
+Let's now combine joins and aggregation functions to calculate
+the average revenue per day.
+
+### Using RDDs
+
+```
+# Import data from HDFS
+val ordersRDD = sc.textFile("/user/cloudera/sqoop_import/orders/")
+val order_itemsRDD = sc.textFile("/user/cloudera/sqoop_import/order_items/")
+
+# Map data 
+# (order_id, date)
+val ordersMap = ordersRDD.map(rec => (rec.split(",")(0).toInt, rec.split(",")(1)))
+# (order_item_order_id, order_subtotal)
+val order_itemsMap = order_itemsRDD.map(rec => (rec.split(",")(1).toInt, rec.split(",")(4).toFloat))
+
+# Join data and map ((order_date, order_id), order_subtotal)
+val joinedOrders = order_itemsMap.join(ordersMap).map(rec => ((rec._2._2, rec._1), rec._2._1))
+
+# Calculate revenue per day and order
+val rev_order_date = joinedOrders.reduceByKey(_+_)
+
+# Now remove order_id from the RDD
+val rev_date = rev_order_date.map(rec => (rec._1._1, rec._2))
+
+# We can finally calculate the average using aggregateByKey
+val rev_avg = (rev_date
+	.aggregateByKey((0.0, 0))((acc, v) => (acc._1+v, acc._2 + 1), (acc, v) => (acc._1 + v._1, acc._2 + v._2))
+	.map(rec => (rec._1, rec._2._1/rec._2._2))
+	)
+	
+# Using groupByKey
+val rev_avg = rev_date.groupByKey().map(rec => (rec._1, rec._2.sum/rec._2.size))
+```
+
+### Using Dataframes
+
+```
+# Import data from HDFS
+val orders = sqlContext.sql("SELECT * FROM orders")
+val order_items = sqlContext.sql("SELECT * FROM order_items")
+
+# Join and calculate average revenue
+val rev_average = (order_items
+	.join(orders, $"order_item_order_id"===$"order_id")
+	.groupBy($"order_date", $"order_item_order_id")
+	.agg(sum($"order_item_subtotal").alias("revenue_order_date"))
+	.groupBy($"order_date")
+	.agg(avg($"revenue_order_date").alias("average_rev"))
+	)
+
 ```

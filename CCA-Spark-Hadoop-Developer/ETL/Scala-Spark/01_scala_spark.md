@@ -15,7 +15,8 @@ This file covers an introduction to Scala Spark based on [this playlist](https:/
   * Using RDDs
   * Using Dataframes
 * Aggregating datasets
-* Aggregating data by key
+* Complex Aggregations 
+* Calculating Max values
 
 ## Submitting tasks
 
@@ -503,3 +504,55 @@ val rev_average = (order_items
 	)
 
 ```
+
+## Calculating Max values
+
+In this section we will try to calculate the customer with the highest
+revenue.
+
+### Using RDDs
+
+```
+# Read data from HDFS
+val orders = sc.textFile("/user/cloudera/sqoop_import/orders/")
+val order_items = sc.textFile("/user/cloudera/sqoop_import/order_items/")
+
+# Prepare RDDs to be joined
+val ordersMap = orders.map(rec => (rec.split(",")(0), rec))
+val order_itemsMap = order_items.map(rec => (rec.split(",")(1), rec))
+
+# Join the RDDs
+val ordersJoin = order_itemsMap.join(ordersMap)
+
+# Now we have to get customer Id and date.
+val orderPerDayPerCustomer = ordersJoin.map(rec => ((rec._2._2.split(",")(1), rec._2._2.split(",")(2).toInt), rec._2._1.split(",")(4).toFloat))
+
+# We now calculate revenue per customer and date
+val revenuePerDayCustomer = orderPerDayPerCustomer.reduceByKey(_+_)
+
+# We have now to calculate the maximum customer by day
+val maxRevenueCustomer = (revenuePerDayCustomer
+	.map(rec => (rec._1._1, (rec._1._2, rec._2)))
+	.reduceByKey((acc, v) => if(acc._2<v._2) v else acc) 
+	)
+```
+
+### Using Dataframes
+
+```
+# Read dataframes from Hive
+val orders_df = sqlContext.sql("SELECT * FROM orders")
+val order_items_df = sqlContext.sql("SELECT * FROM order_items")
+
+# Calculate max
+val maxRevenueCustomer = (order_items_df
+	.join(orders_df, $"order_item_order_id"===$"order_id")
+	.groupBy($"order_customer_id", $"order_date")
+	.agg(sum($"order_item_subtotal").alias("rev_customer_day"))
+	.groupBy($"order_date")
+	.agg(max($"rev_customer_day"))
+	)
+```
+
+The later process has to be revisited since it outputs the maximum revenue
+per date and customer but without the `customer_id`.

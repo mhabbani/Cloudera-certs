@@ -545,14 +545,17 @@ val orders_df = sqlContext.sql("SELECT * FROM orders")
 val order_items_df = sqlContext.sql("SELECT * FROM order_items")
 
 # Calculate max
+import org.apache.spark.sql.expressions._
+import org.apache.spark.sql.functions._
+
+val win = Window.partitionBy("order_date").orderBy(desc("rev_customer_day"))
+
 val maxRevenueCustomer = (order_items_df
 	.join(orders_df, $"order_item_order_id"===$"order_id")
 	.groupBy($"order_customer_id", $"order_date")
 	.agg(sum($"order_item_subtotal").alias("rev_customer_day"))
-	.groupBy($"order_date")
-	.agg(max($"rev_customer_day"))
+	.select(row_number().over(win).alias("row_id"), $"order_date", $"rev_customer_day", $"order_customer_id")
+	.filter($"row_id" === 1)
 	)
 ```
 
-The later process has to be revisited since it outputs the maximum revenue
-per date and customer but without the `customer_id`.

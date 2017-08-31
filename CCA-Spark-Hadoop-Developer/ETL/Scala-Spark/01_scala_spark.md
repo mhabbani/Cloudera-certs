@@ -17,6 +17,7 @@ This file covers an introduction to Scala Spark based on [this playlist](https:/
 * Aggregating datasets
 * Complex Aggregations 
 * Calculating Max values
+* Filtering data
 
 ## Submitting tasks
 
@@ -559,3 +560,25 @@ val maxRevenueCustomer = (order_items_df
 	)
 ```
 
+## Filtering data
+
+In this section we will cover how to filter datasets using RDDs and Dataframes
+
+### Using RDDs
+
+```
+# Load orders RDDs from HDFS
+val orders = sc.textFile("/user/cloudera/sqoop_import/orders/")
+
+# Let's filter completed orders
+ordersRDD.filter(_.split(",")(3).equals("COMPLETE")).collect().foreach(println)
+```
+
+### Using Dataframes
+
+```
+# Load dataframe from Hive
+val orders = sqlContext.sql("SELECT * FROM orders")
+
+orders.filter($"order_status" === "COMPLETE").show()
+```

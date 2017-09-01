@@ -18,6 +18,7 @@ This file covers an introduction to Scala Spark based on [this playlist](https:/
 * Complex Aggregations 
 * Calculating Max values
 * Filtering data
+* Ordering data
 
 ## Submitting tasks
 
@@ -581,4 +582,41 @@ ordersRDD.filter(_.split(",")(3).equals("COMPLETE")).collect().foreach(println)
 val orders = sqlContext.sql("SELECT * FROM orders")
 
 orders.filter($"order_status" === "COMPLETE").show()
+```
+
+## Ordering
+
+In this section we will cover how to order RDDs using Spark.
+
+### SortByKey
+
+Sort, by default in ascending order, a RDD by its key.
+
+```
+# Sorting in ascending order
+products.map(rec => (rec.split(",")(4).toFloat, rec)).sortByKey().collect().foreach(println)
+
+# Sorging in descending order
+products.map(rec => (rec.split(",")(4).toFloat, rec)).sortByKey(false).collect().foreach(println)
+```
+
+### Top
+
+Get top `n` elements by key
+
+```
+# Sorting in descending order
+products.map(rec => (rec.split(",")(4).toFloat, rec)).top(5).collect().foreach(println)
+```
+
+### TakeOrdered
+
+This function allows the user to define the key used to order the RDD, so the map
+step might be skipped.
+
+```
+(products
+	.takeOrdered(5)(Ordering[Float].reverse.on(x => x.split(",")(0).toFloat))
+	.foreach(println)
+	)
 ```

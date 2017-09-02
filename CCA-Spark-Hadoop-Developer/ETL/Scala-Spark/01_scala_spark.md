@@ -19,6 +19,7 @@ This file covers an introduction to Scala Spark based on [this playlist](https:/
 * Calculating Max values
 * Filtering data
 * Ordering data
+* Ordering and grouping
 
 ## Submitting tasks
 
@@ -618,5 +619,79 @@ step might be skipped.
 (products
 	.takeOrdered(5)(Ordering[Float].reverse.on(x => x.split(",")(0).toFloat))
 	.foreach(println)
+	)
+```
+
+## Ordering and grouping
+
+In this section we will cover how to combine group by, and ordering operations.
+
+```
+# Read data from HDFS
+val products = sc.textFile("/user/cloudera/sqoop_import/products/")
+
+# Add category id as key.
+val productsMap = products.map(rec => (rec.split(",")(1), rec))
+
+# Group products by categor.y
+val productGroup = productsMap.groupByKey()
+
+# Sort itarable resulting after the groupByKey
+val productGroupSorted = productGroup.map(rec => (rec._1, rec._2.toList.sortBy(k => k.split(",")(4).toFloat)))
+
+productGroupSorted.take(5).foreach(println)
+```
+
+Now let's get top N product by price in each category. We will define a function
+to do so as follows:
+
+```
+def getTopN(rec: (String, Iterable[String]), n: Int): Iterable[String] = {
+	return rec._2.toList.sortBy(k => -k.split(",")(4).toFloat).take(n)
+}
+
+productGroup.flatMap(getTopN(_, 5)).take(100).foreach(println)
+```
+
+However if we want to see all products with prices in the top N prices, then
+the previous logic is not enough. Let's see how to proceed:
+
+```
+def getTopNDense(rec: (String, Iterable[String]), n: Int): Iterable[String] = {
+	var prodPrices: List[Float] = List()
+	var topNPrices: List[Float] = List()
+	var sortedRecs: List[String] = List()
+	for( i <- rec._2) {
+		prodPrices = prodPrices:+ i.split(",")(4).toFloat
+	}
+	topNPrices = prodPrices.distinct.sortBy(k => -k).take(n)
+	sortedRecs = rec._2.toList.sortBy(k => -k.split(",")(4).toFloat)
+	var x: List[String] = List()
+	for(i <- sortedRecs){
+		if(topNPrices.contains(i.split(",")(4).toFloat))
+			x = x:+ i
+	}
+	return x
+}
+
+productGroup.flatMap(getTopNDense(_, 5)).take(100).foreach(println)
+```
+
+Let's see now how to accomplisht the same task using dataframes:
+
+```
+# Load data from Hive
+val products = sqlContext.sql("SELECT * FROM products")
+
+# Import windows from expression package
+import org.apache.spark.sql.expressions._
+import org.apache.spark.sql.functions._
+
+# Define a window
+val win = Window.partitionBy("product_category_id").orderBy(desc("product_price"))
+
+val sortedProducts = (products
+	.select(denseRank.over(win).alias("rank"), $"product_category_id", $"product_price")
+	.filter($"rank" <= 5)
 	)
 ```
